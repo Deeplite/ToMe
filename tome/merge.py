@@ -67,13 +67,34 @@ def bipartite_soft_matching(
             # Sort to ensure the class token is at the start
             unm_idx = unm_idx.sort(dim=1)[0]
 
-    def merge(x: torch.Tensor, mode="mean") -> torch.Tensor:
+    def _scatter(x: torch.Tensor, mode="mean") ->torch.Tensor:
+        src, dst = x[..., ::2, :], x[..., 1::2, :]
+        n, t1, c = src.shape
+        unm = src.gather(dim=-2, index=unm_idx.expand(n, t1 - r, c))
+        src = src.gather(dim=-2, index=src_idx.expand(n, r, c))
+        # Create a new tensor for the updated dst
+        updated_dst = dst.clone()
+
+        if mode == 'sum':
+            # Update values in updated_dst using scatter_add operation
+            updated_dst.scatter_add_(-2, dst_idx.expand(n, r, c), src)
+        else:
+            raise ValueError("Invalid mode specified.")
+
+        # Assign the updated_dst back to dst
+        dst = updated_dst
+        return src, dst, unm
+
+    def _scatter_orig(x: torch.Tensor, mode="mean") ->torch.Tensor:
         src, dst = x[..., ::2, :], x[..., 1::2, :]
         n, t1, c = src.shape
         unm = src.gather(dim=-2, index=unm_idx.expand(n, t1 - r, c))
         src = src.gather(dim=-2, index=src_idx.expand(n, r, c))
         dst = dst.scatter_reduce(-2, dst_idx.expand(n, r, c), src, reduce=mode)
+        return src, dst, unm
 
+    def merge(x: torch.Tensor, mode="mean") -> torch.Tensor:
+        src, dst, unm = _scatter(x, mode)
         if distill_token:
             return torch.cat([unm[:, :1], dst[:, :1], unm[:, 1:], dst[:, 1:]], dim=1)
         else:

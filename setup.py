@@ -20,6 +20,9 @@ setup(
         "pillow",
         "tqdm",
         "scipy",
+        "onnx",
+        "onnxruntime-gpu",
+        "urllib3<2.0",
     ],
     packages=find_packages(exclude=("examples", "build")),
 )
